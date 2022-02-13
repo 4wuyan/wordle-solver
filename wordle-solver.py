@@ -5,6 +5,8 @@ A wordle solver
 
 Example usage:
 python3 wordle-solver.py black=01122 white=01122
+
+(0 for grey, 1 for yellow, 2 for green)
 """
 
 import argparse
