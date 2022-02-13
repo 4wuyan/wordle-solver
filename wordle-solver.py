@@ -1,32 +1,85 @@
+#!/usr/bin/env python3
+
+"""
+A wordle solver
+
+Example usage:
+python3 wordle-solver.py black=01122 white=01122
+"""
+
 import argparse
+import re
+import sys
+from collections import defaultdict
 
 
-def main(candidates, rules):
-    for c in filter(lambda x: all(r(x) for r in rules), candidates):
+def main():
+    tries = parse_arguments()
+    global_clues = defaultdict(Clue)
+    for attempt in tries:
+        new_clues = get_clues(attempt)
+        for letter, new_clue in new_clues.items():
+            global_clues[letter] += new_clue
+
+    rules = []
+    for letter, clue in global_clues.items():
+        rules += get_rules(letter, clue)
+    for c in filter(lambda x: all(r(x) for r in rules), five_letter_words):
         print(c)
 
 
-def get_rules(args):
-    rules = []
-    if args.grey:
-        rules.append(lambda x, ex=args.grey: all(c not in ex for c in x))
-    for i in [1, 2, 3, 4, 5]:
-        green = getattr(args, f'green_{i}')
-        if green:
-            rules.append(lambda x, j=i-1, g=green: x[j] == g)
-        yellow = getattr(args, f'yellow_{i}')
-        if yellow:
-            rules.append(lambda x, j=i-1, y=yellow: x[j] not in y and y in x)
-    return rules
+def get_clues(attempt: str):
+    word, outputs = attempt.split('=')
+    result = defaultdict(Clue)
+    for i, (letter, output) in enumerate(zip(word, outputs)):
+        if output == '0':
+            result[letter].may_have_more = False
+        else:
+            result[letter].min_occurrence += 1
+            if output == '1':
+                result[letter].must_not_be_at.append(i)
+            else:
+                result[letter].must_be_at.append(i)
+    return result
 
 
-def get_args():
+def get_rules(letter, clue):
+    result = [lambda x, le=letter, p=p: x[p] == le for p in clue.must_be_at]
+    result += [lambda x, le=letter, p=p: x[p] != le for p in clue.must_not_be_at]
+    if clue.may_have_more:
+        result.append(lambda x, l=letter, c=clue.min_occurrence: x.count(l) >= c)
+    else:
+        result.append(lambda x, l=letter, c=clue.min_occurrence: x.count(l) == c)
+    return result
+
+
+class Clue:
+    def __init__(self):
+        self.min_occurrence = 0
+        self.may_have_more = True
+        self.must_be_at = []
+        self.must_not_be_at = []
+
+    def __add__(self, other):
+        result = Clue()
+        result.min_occurrence = max(self.min_occurrence, other.min_occurrence)
+        result.may_have_more = all([self.may_have_more, other.may_have_more])
+        result.must_be_at = self.must_be_at + other.must_be_at
+        result.must_not_be_at = self.must_not_be_at + other.must_not_be_at
+        return result
+
+
+def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--grey')
-    for i in [1, 2, 3, 4, 5]:
-        parser.add_argument(f'--green-{i}')
-        parser.add_argument(f'--yellow-{i}')
-    return parser.parse_args()
+    parser.add_argument('tries', nargs='+',
+                        help='Previous attempts. Format: "words=00112". 0 for grey, 1 for yellow, 2 for green.')
+    tries = [t.lower() for t in parser.parse_args().tries]
+    pattern = re.compile('^[a-z]{5}=[0-2]{5}$')
+    if all(map(pattern.match, tries)):
+        return tries
+    else:
+        parser.print_help()
+        sys.exit(1)
 
 
 # From https://github.com/dwyl/english-words/blob/master/words.txt
@@ -380,4 +433,4 @@ zitis zloty zoeas zombi zonal zoned zoner zones zooid zooks zooms zoons zowie zu
 '''.split()
 
 if __name__ == '__main__':
-    main(five_letter_words, get_rules(get_args()))
+    main()
